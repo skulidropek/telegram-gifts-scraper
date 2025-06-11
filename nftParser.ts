@@ -21,6 +21,7 @@ import * as cheerio from "cheerio";
 import he from "he";
 import { Agent as HttpAgent } from "http";
 import { Agent as HttpsAgent } from "https";
+import * as path from "path";
 
 /*─────────────────── types ───────────────────*/
 
@@ -42,6 +43,7 @@ const OUT_FILE   = "nft-metadata.json";
 const SAVE_EVERY  = Number(process.env.SAVE_EVERY  ?? 100);
 const SYNC_BATCH  = Number(process.env.SYNC_BATCH  ?? 50);
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 10);
+const DATA_DIR    = process.env.DATA_DIR ?? "data";
 const CHUNK_SIZE  = Number(process.env.CHUNK_SIZE ?? 5000); // записей в одном JSON-файле
 
 /*─────────────────── helpers ─────────────────*/
@@ -160,21 +162,32 @@ async function scrapeOne(slug: string): Promise<NftMeta | null> {
 /*────────────────── persistence ─────────────*/
 
 function chunkFileName(idx: number): string {
-  return idx === 0 ? OUT_FILE : `nft-metadata-${idx}.json`;
+  const base = idx === 0 ? "nft-metadata.json" : `nft-metadata-${idx}.json`;
+  return path.join(DATA_DIR, base);
+}
+
+async function ensureDataDir(): Promise<void> {
+  await fs.mkdir(DATA_DIR, { recursive: true }).catch(() => {/* ignore */});
 }
 
 async function listChunks(): Promise<string[]> {
-  const files = await fs.readdir(".");
+  await ensureDataDir();
+  const inDir  = await fs.readdir(DATA_DIR).catch(() => [] as string[]);
+  const inRoot = await fs.readdir(".");
+  const files = [...inDir.map(f => path.join(DATA_DIR, f)), ...inRoot]
+    .filter(f => /(^|\/|^)nft-metadata(?:-\d+)?\.json$/.test(f));
+
   return files
-    .filter(f => /^nft-metadata(?:-\d+)?\.json$/.test(f))
     .sort((a, b) => {
-      const ai = a === OUT_FILE ? 0 : Number(a.match(/-(\d+)\.json$/)?.[1] ?? 0);
-      const bi = b === OUT_FILE ? 0 : Number(b.match(/-(\d+)\.json$/)?.[1] ?? 0);
+      const fileName = (p: string): string => path.basename(p);
+      const ai = fileName(a) === "nft-metadata.json" ? 0 : Number(fileName(a).match(/-(\d+)\.json$/)?.[1] ?? 0);
+      const bi = fileName(b) === "nft-metadata.json" ? 0 : Number(fileName(b).match(/-(\d+)\.json$/)?.[1] ?? 0);
       return ai - bi;
     });
 }
 
 async function save(map: Map<string, NftMeta>): Promise<void> {
+  await ensureDataDir();
   const all = Array.from(map.values());
   const chunks: string[] = [];
 
@@ -182,18 +195,18 @@ async function save(map: Map<string, NftMeta>): Promise<void> {
     const file = chunkFileName(chunks.length);
     const slice = all.slice(i, i + CHUNK_SIZE);
     await fs.writeFile(file, JSON.stringify(slice, null, 2));
-    chunks.push(file);
+    chunks.push(path.resolve(file));
   }
 
-  // удалить лишние файлы, оставшиеся от прошлых запусков
+  // удалить лишние файлы (в data/ и в корне), оставшиеся от прошлых запусков
   const existing = await listChunks();
   for (const f of existing) {
-    if (!chunks.includes(f)) {
+    if (!chunks.includes(path.resolve(f))) {
       await fs.unlink(f).catch(() => {/* ignore */});
     }
   }
 
-  console.log(`💾  saved ${map.size} records into ${chunks.length} chunks`);
+  console.log(`💾  saved ${map.size} records into ${chunks.length} chunks (${DATA_DIR}/)`);
 }
 
 /*────────────────── main ────────────────────*/

@@ -39,7 +39,7 @@ jobs:
       - name: Check for changes
         id: check
         run: |
-          git diff --quiet -- '*.json' || echo "changed=true" >> $GITHUB_OUTPUT
+          git diff --quiet || echo "changed=true" >> $GITHUB_OUTPUT
           
       - name: Commit and push if changed
         if: steps.check.outputs.changed == 'true'
@@ -50,6 +50,7 @@ jobs:
           # Получаем текущую дату для коммита
           TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
           
-          git add *.json
+          git add data/*.json
+          git add -u
           git commit -m "🔄 Update NFT metadata - $TIMESTAMP" -m "Automatic update via GitHub Actions"
           git push 
