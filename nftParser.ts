@@ -42,6 +42,7 @@ const OUT_FILE   = "nft-metadata.json";
 const SAVE_EVERY  = Number(process.env.SAVE_EVERY  ?? 100);
 const SYNC_BATCH  = Number(process.env.SYNC_BATCH  ?? 50);
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 10);
+const CHUNK_SIZE  = Number(process.env.CHUNK_SIZE ?? 5000); // записей в одном JSON-файле
 
 /*─────────────────── helpers ─────────────────*/
 
@@ -158,12 +159,41 @@ async function scrapeOne(slug: string): Promise<NftMeta | null> {
 
 /*────────────────── persistence ─────────────*/
 
+function chunkFileName(idx: number): string {
+  return idx === 0 ? OUT_FILE : `nft-metadata-${idx}.json`;
+}
+
+async function listChunks(): Promise<string[]> {
+  const files = await fs.readdir(".");
+  return files
+    .filter(f => /^nft-metadata(?:-\d+)?\.json$/.test(f))
+    .sort((a, b) => {
+      const ai = a === OUT_FILE ? 0 : Number(a.match(/-(\d+)\.json$/)?.[1] ?? 0);
+      const bi = b === OUT_FILE ? 0 : Number(b.match(/-(\d+)\.json$/)?.[1] ?? 0);
+      return ai - bi;
+    });
+}
+
 async function save(map: Map<string, NftMeta>): Promise<void> {
-  await fs.writeFile(
-    OUT_FILE,
-    JSON.stringify(Array.from(map.values()), null, 2),
-  );
-  console.log(`💾  saved ${map.size} records`);
+  const all = Array.from(map.values());
+  const chunks: string[] = [];
+
+  for (let i = 0; i < all.length; i += CHUNK_SIZE) {
+    const file = chunkFileName(chunks.length);
+    const slice = all.slice(i, i + CHUNK_SIZE);
+    await fs.writeFile(file, JSON.stringify(slice, null, 2));
+    chunks.push(file);
+  }
+
+  // удалить лишние файлы, оставшиеся от прошлых запусков
+  const existing = await listChunks();
+  for (const f of existing) {
+    if (!chunks.includes(f)) {
+      await fs.unlink(f).catch(() => {/* ignore */});
+    }
+  }
+
+  console.log(`💾  saved ${map.size} records into ${chunks.length} chunks`);
 }
 
 /*────────────────── main ────────────────────*/
@@ -171,8 +201,13 @@ async function save(map: Map<string, NftMeta>): Promise<void> {
 (async (): Promise<void> => {
   /* 1) load previous dump */
   let previous: NftMeta[] = [];
-  try { previous = JSON.parse(await fs.readFile(OUT_FILE, "utf8")); }
-  catch { /* first run */ }
+  try {
+    const chunkFiles = await listChunks();
+    for (const f of chunkFiles) {
+      const data = JSON.parse(await fs.readFile(f, "utf8"));
+      previous.push(...data);
+    }
+  } catch {/* first run or corrupt */}
 
   const map = new Map<string, NftMeta>(previous.map(e => [e.slug, e]));
 
