@@ -1,0 +1,27 @@
+{
+  "name": "telegram-gifts-scraper",
+  "version": "1.0.0",
+  "description": "CLI tool to scrape Telegram NFT gift metadata and persist it to JSON.",
+  "author": "",
+  "license": "MIT",
+  "bin": {
+    "nft-parser": "dist/nftParser.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/nftParser.js",
+    "dev": "ts-node nftParser.ts"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "cheerio": "^1.0.0-rc.12",
+    "he": "^1.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.17",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "@types/he": "^1.1.1",
+    "@types/cheerio": "^0.22.32"
+  }
+} 
