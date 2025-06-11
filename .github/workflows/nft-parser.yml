@@ -34,7 +34,7 @@ jobs:
           export CONCURRENCY=15
           
           # Запускаем парсер с ограничением по времени
-          timeout 100s node dist/nftParser.js || true
+          timeout 3600s node dist/nftParser.js || true
           
       - name: Check for changes
         id: check
