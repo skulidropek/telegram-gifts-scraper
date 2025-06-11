@@ -161,8 +161,14 @@ async function scrapeOne(slug: string): Promise<NftMeta | null> {
 
 /*────────────────── persistence ─────────────*/
 
+function chunkIndex(name: string): number {
+  if (name === "nft-metadata.json") return 0; // legacy
+  const m = name.match(/-(\d+)\.json$/);
+  return m ? Number(m[1]) : 0;
+}
+
 function chunkFileName(idx: number): string {
-  const base = idx === 0 ? "nft-metadata.json" : `nft-metadata-${idx}.json`;
+  const base = `nft-metadata-${idx}.json`;
   return path.join(DATA_DIR, base);
 }
 
@@ -177,13 +183,7 @@ async function listChunks(): Promise<string[]> {
   const files = [...inDir.map(f => path.join(DATA_DIR, f)), ...inRoot]
     .filter(f => /(^|\/|^)nft-metadata(?:-\d+)?\.json$/.test(f));
 
-  return files
-    .sort((a, b) => {
-      const fileName = (p: string): string => path.basename(p);
-      const ai = fileName(a) === "nft-metadata.json" ? 0 : Number(fileName(a).match(/-(\d+)\.json$/)?.[1] ?? 0);
-      const bi = fileName(b) === "nft-metadata.json" ? 0 : Number(fileName(b).match(/-(\d+)\.json$/)?.[1] ?? 0);
-      return ai - bi;
-    });
+  return files.sort((a, b) => chunkIndex(path.basename(a)) - chunkIndex(path.basename(b)));
 }
 
 async function save(map: Map<string, NftMeta>): Promise<void> {
